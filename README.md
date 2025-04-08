@@ -13,7 +13,3 @@ This project explores stock price movements using Yahoo Finance data. It include
 - Moving averages, RSI, MACD (technical indicators)
 - LSTM for modeling
 
-## 🚀 How to Run
-```bash
-pip install -r requirements.txt
-python main.py
