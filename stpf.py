@@ -103,7 +103,6 @@ def get_stock_data_plot(data):
 
 
 
-
 def get_daily_return(data):
     data['Daily Return'] = data['Close'].pct_change()
     fig, ax = plt.subplots()
