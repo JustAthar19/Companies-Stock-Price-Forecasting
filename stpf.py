@@ -67,6 +67,9 @@ MODEL TRAINING
 """
 
 
+
+
+
 @st.cache_resource
 def train(X_train, y_train):
     model = Sequential()
@@ -104,8 +107,8 @@ def get_stock_data_plot(data):
 
 
 def get_daily_return(data):
-    data['Daily Return'] = data['Close'].pct_change()
-    fig, ax = plt.subplots()
+    data['Daily Return'] = data['Close'].pct_change()    
+    fig, ax = plt.subplots(figsize=(16, 11))
     ax.hist(data['Daily Return'].dropna(), bins=50)  # dropna to avoid NaNs
     ax.set_xlabel('Daily Return')
     ax.set_ylabel('Counts')
@@ -138,7 +141,6 @@ def plot_predictions(data, predictions, len_train_data):
 
     # Show plot in Streamlit
     st.pyplot(fig)
-
 
 
 def plot_pred(data, predictions, len_train_data):
@@ -178,24 +180,11 @@ X_train, y_train, X_test, y_test = lstm_data_load()
 
 models = train(X_train, y_train)
 predictions = predict(X_test, y_test, models)
-# # get_stock_data_plot(data)
-# # get_close_price_history(data)
+# get_stock_data_plot(data)
+# get_close_price_history(data)
 plot_pred(data, predictions, len_train_data)
 get_daily_return(data)
 
+data['Daily Return'] = data['Close'].pct_change() 
+st.write(data.info)
 
-
-
-# st.write(valid[['Close', 'Volume']])
-# st.write(valid)
-
-# plot_predictions(data, predictions, len_train_data)
-
-
-
-## Add Button ##
-valid = data[len_train_data:].copy()
-valid['Predictions'] = predictions
-st.write(valid)
-st.write(valid['Predictions'])
-st.write(valid['Close'][f'{selected_stocks}'])

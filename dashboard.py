@@ -6,8 +6,10 @@ from prophet import Prophet
 from prophet.plot import plot_plotly
 
 
-end = '2015-01-01'
-start = datetime.now().strftime("%Y-%m-%d")
+
+end = datetime.now().strftime("%Y-%m-%d")
+start = '2015-01-01'
+
 
 # end = datetime.today().strftime("%Y-%m-%d")
 # start = (datetime.today() - timedelta(days=365)).strftime("%Y-%m-%d") 
@@ -55,8 +57,14 @@ ph.fit(df)
 future = ph.make_future_dataframe(periods=period)
 forecast = ph.predict(future)
 
+
+
+st.write(future)
+st.write(forecast)
+
+
 st.subheader('Forecast Data')
-st.write(forecast.tail())
+st.write(forecast.head())
 
 st.subheader("Forecast Data")
 fig1 = plot_plotly(ph, forecast)
