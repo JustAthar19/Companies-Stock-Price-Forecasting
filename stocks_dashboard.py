@@ -6,30 +6,20 @@ from datetime import datetime, timedelta
 from plotly import graph_objects as go
 from prophet import Prophet
 
-
-# fetch stock data based on the tickeer, period, and interval
+# get the data from yahoo finance 
 @st.cache_resource
 def fetch_stock_data(ticker, period):
-    end_date = datetime.now()
-    if period == '1wk':
-        start_date = end_date - timedelta(days=7)
-        data = yf.download(ticker, start=start_date, end=end_date)
-    else:
-        data = yf.download(ticker, period=period)
+    data = yf.download(ticker, period=period)
     return data
 
 
 # process data to make sure it's in the right format
 def process_data(data):
-    if data.index.tzinfo is None:
-        data.index = data.index.tz_localize('UTC')
-    data.index = data.index.tz_convert('US/Eastern')
     data = data.droplevel(1, axis=1)
     data.reset_index(inplace=True)
     data['Date'] = pd.to_datetime(data['Date']).dt.date
     data.rename(columns={'Date':'Datetime'}, inplace=True)
     return data
-
 
 forecast_periods = {
     '1wk': 7,
@@ -38,7 +28,6 @@ forecast_periods = {
     'max': 365
 }
 
-
 # new forecasting method
 def prophet_forecast(data, time_periods):
     data = data[['Datetime', 'Close']]
@@ -46,12 +35,10 @@ def prophet_forecast(data, time_periods):
         "Datetime" : "ds",
         "Close" : "y"
     })
-    st.write(data)
     ph = Prophet()
     ph.fit(data)
     future = ph.make_future_dataframe(periods=time_periods)
     forecast = ph.predict(future)
-
     return forecast
 
 # calculate basic metric from the stock data
@@ -67,19 +54,20 @@ def calculate_metrics(data):
 
 # set up streamlit page layout
 st.set_page_config(layout='wide')
-st.title("Stock_Dashboard")
-
-st.sidebar.header("Parameters")
-ticker = st.sidebar.text_input("Ticker", "ADBE")
+st.title("Stock Dashboard")
+st.sidebar.header("Configurations")
+ticker = st.sidebar.selectbox("Select Company for Predictions", ['AAPL', 'GOOG', 'MSFT', 'AMZN'])
 time_period = st.sidebar.selectbox("Time Period", ["1wk", "1mo", "1y", "max"])
-chart_type = st.sidebar._selectbox("Chart Type", ["Candlestick", "Line"])
+chart_type = st.sidebar.selectbox("Chart Type", ["Candlestick", "Line"])
 
 # Main content Area
 if st.sidebar.button("Forecast"):
+    training_state = st.text("Training in Progress")
     data = fetch_stock_data(ticker, time_period)
     data = process_data(data)
     forecast_data = prophet_forecast(data, forecast_periods[time_period])
     last_close, change, pct_change, high, low, volume = calculate_metrics(data)
+    training_state.text("Training Done")
 
     # display the main metrics
     st.metric(label=f"{ticker} last price", value=f"{round(last_close, 2)} USD", delta=f"{round(change,2)} ({round(pct_change)}%)")
@@ -101,8 +89,7 @@ if st.sidebar.button("Forecast"):
         fig = px.line(data, x='Datetime', y='Close')
 
     # Prophet Graph
-    fig.add_trace(go.Scatter(x=forecast_data['ds'], y=forecast_data['yhat'], name='predicted'))
-
+    fig.add_trace(go.Scatter(x=forecast_data['ds'], y=forecast_data['yhat'][:len(data)+5], name='predicted'))
 
 
     # format graph
@@ -116,8 +103,6 @@ if st.sidebar.button("Forecast"):
     st.subheader("Historical Data")
     st.dataframe(data[['Datetime', 'Open', 'High', 'Low', 'Close', 'Volume']])
 
-    st.subheader('Technial Indicators')
-    st.dataframe(data[['Datetime', 'SMA_20', 'EMA_20']])
 
 # Sidebar Prices
 # sidebar section for real-tine stock prices of selected symbol
