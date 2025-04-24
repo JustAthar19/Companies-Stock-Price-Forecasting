@@ -119,7 +119,7 @@ for symbol in stock_symbols:
 
 # Sidebar information section
 st.sidebar.subheader('About')
-st.sidebar.info('This dashboard provides stock data and technical indicators for various time periods. Use the sidebar to customize your view.')
+st.sidebar.info('This dashboard provides stock data of Apple(AAPL), Google(GOOG), Microsoft(MSFT), Amazon(Amazon)')
 
 
 
