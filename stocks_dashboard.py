@@ -2,7 +2,6 @@ import yfinance as yf
 import streamlit as st
 import plotly.express as px
 import pandas as pd
-from datetime import datetime, timedelta
 from plotly import graph_objects as go
 from prophet import Prophet
 
