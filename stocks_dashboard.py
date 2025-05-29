@@ -94,6 +94,7 @@ def calculate_metrics(data):
 # set up streamlit page layout
 st.set_page_config(layout='wide')
 st.title("Stock Dashboard")
+tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "📈 Technical Indicators", "🔮 Forecast", "📄 Raw Data"])
 st.sidebar.header("Configurations")
 ticker = st.sidebar.selectbox("Select Company for Predictions", ['AAPL', 'GOOG', 'MSFT', 'AMZN'])
 time_period = st.sidebar.selectbox("Time Period", ["1wk", "1mo", "1y", "max"])
@@ -106,53 +107,53 @@ data = process_data(data)
 last_close, change, pct_change, high, low, volume = calculate_metrics(data)
 
 
-# display the main metrics
-st.metric(label=f"{ticker} last price", value=f"{round(last_close, 2)} USD", delta=f"{round(change,2)} ({round(pct_change)}%)")
-col1, col2, col3 = st.columns(3)
-col1.metric("High", f"{round(high,2)} USD")
-col2.metric("Low", f"{round(low,2)} USD")
-col3.metric("Volume", f"{volume}")
+with tab1: # Overview
+    # display the main metrics
+    st.metric(label=f"{ticker} last price", value=f"{round(last_close, 2)} USD", delta=f"{round(change,2)} ({round(pct_change)}%)")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("High", f"{round(high,2)} USD")
+    col2.metric("Low", f"{round(low,2)} USD")
+    col3.metric("Volume", f"{volume}")
 
-# plot the stock chart
-fig = go.Figure()
-if chart_type == 'Candlestick':
-    fig.add_trace(go.Candlestick(x=data['Datetime'],open=data['Open'],high=data['High'],
-                                    low=data['Low'],close=data['Close']))
+    # plot the stock chart
+    fig = go.Figure()
+    if chart_type == 'Candlestick':
+        fig.add_trace(go.Candlestick(x=data['Datetime'],open=data['Open'],high=data['High'],
+                                        low=data['Low'],close=data['Close']))
 
-else:
-    fig = px.line(data, x='Datetime', y='Close')
-# format graph
+    else:
+        fig = px.line(data, x='Datetime', y='Close')
+    fig.update_layout(title=f'{ticker} {time_period.upper()} Chart',
+                      xaxis_title="Time", yaxis_title="Price (USD)", height=600)
+    st.plotly_chart(fig, use_container_width=True)
 
-if st.sidebar.button("Forecast"):
-    training_state = st.text("Training in Progress")
-    # Prophet
-    forecast_data, data = get_forecast(ticker, time_period, forecast_periods[time_period])
-    training_state.text("Training Done")
-    # Prophet Graph
-    fig.add_trace(go.Scatter(x=forecast_data['ds'], y=forecast_data['yhat'][:len(data) + 4], name='predicted')) 
-fig.update_layout(title=f'{ticker} {time_period.upper()} Chart',
-                        xaxis_title="Time",
-                        yaxis_title="Price (USD)",
-                        height = 600)
-st.plotly_chart(fig, use_container_width=True)
+with tab2: 
+    st.subheader("Moving Average")
+    if len(data) < 10 :
+        st.caption("Data length is not sufficient enough to create moving average plot")
+    else:
+        moving_average_plot(data, ticker)
+    st.subheader("Daily Return")
+    daily_return_plot(data)
 
+with tab3:
+    if st.button("Forecast"):
+        training_state = st.text("Training in Progress")
+        # Prophet
+        forecast_data, data = get_forecast(ticker, time_period, forecast_periods[time_period])
+        training_state.text("Training Done")
+        # Prophet Graph
+        fig.add_trace(go.Scatter(x=forecast_data['ds'], y=forecast_data['yhat'][:len(data) + 4], name='predicted')) 
+    fig.update_layout(title=f'{ticker} {time_period.upper()} Chart',
+                            xaxis_title="Time",
+                            yaxis_title="Price (USD)",
+                            height = 600)
+    st.plotly_chart(fig, use_container_width=True)
 
+with tab4:
     # display historiacal data and technical indicator
-st.subheader("Historical Data")
-st.dataframe(data[['Datetime', 'Adj Close', 'Open', 'High', 'Low', 'Close', 'Volume']],  use_container_width=True)
-
-st.markdown("<h2 style='text-align: center;'>Visualization</h2>", unsafe_allow_html=True)
-st.subheader("Moving Average")
-if len(data) < 10 :
-    st.caption("Data length is not sufficient enough to create moving average plot")
-else:
-    moving_average_plot(data, ticker)
-
-st.subheader("Daily Return")
-# st.write(data.describe())
-
-
-daily_return_plot(data)
+    st.subheader("Historical Data")
+    st.dataframe(data[['Datetime', 'Adj Close', 'Open', 'High', 'Low', 'Close', 'Volume']],  use_container_width=True)
 
 # Sidebar Prices
 # sidebar section for real-tine stock prices of selected symbol
