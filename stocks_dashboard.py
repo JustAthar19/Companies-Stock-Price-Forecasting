@@ -1,14 +1,17 @@
+import matplotlib.pyplot as plt
 import yfinance as yf
 import streamlit as st
 import plotly.express as px
 import pandas as pd
+import numpy as np
 from plotly import graph_objects as go
 from prophet import Prophet
+
 
 # get the data from yahoo finance 
 @st.cache_resource
 def fetch_stock_data(ticker, period):
-    data = yf.download(ticker, period=period)
+    data = yf.download(ticker, period=period, auto_adjust=False)
     return data
 
 
@@ -28,17 +31,54 @@ forecast_periods = {
 }
 
 # new forecasting method
-def prophet_forecast(data, time_periods):
-    data = data[['Datetime', 'Close']]
-    data = data.rename(columns={
-        "Datetime" : "ds",
-        "Close" : "y"
-    })
-    ph = Prophet()
-    ph.fit(data)
-    future = ph.make_future_dataframe(periods=time_periods)
-    forecast = ph.predict(future)
-    return forecast
+@st.cache_data
+def get_forecast(ticker, period, time_periods):
+    raw_data = fetch_stock_data(ticker, period)
+    data = process_data(raw_data)
+    df = data[['Datetime', 'Close']].rename(columns={"Datetime": "ds", "Close": "y"})
+    model = Prophet()
+    model.fit(df)
+    future = model.make_future_dataframe(periods=time_periods)
+    forecast = model.predict(future)
+    return forecast, data
+
+
+def moving_average_plot(data, ticker):
+    days = [10, 20, 50]
+    for day in days:
+        col = f"MA {day}"
+        data[col] = data['Close'].rolling(window=day).mean()
+
+    fig = go.Figure()
+
+    fig.add_trace(go.Scatter(x=data['Datetime'], y=data['Close'],
+                             mode='lines', name='Close'))
+
+    for day in days:
+        col = f"MA {day}"
+        fig.add_trace(go.Scatter(x=data['Datetime'], y=data[col],
+                                 mode='lines', name=f'MA {day} days'))
+
+    fig.update_layout(
+        title=f'{ticker} - Moving Averages',
+        xaxis_title='Date',
+        yaxis_title='Price',
+        legend=dict(x=0, y=1),
+        template='plotly_white',
+        width=900,
+        height=600
+    )
+
+    st.plotly_chart(fig)
+
+
+def daily_return_plot(data):
+    data['Daily Return'] = data['Adj Close'].pct_change()
+    fig = px.line(data, x=data['Datetime'], y='Daily Return', title='Daily Returns Over Time')
+    fig.update_layout(yaxis_title='Daily Return', xaxis_title='Date')
+    st.plotly_chart(fig, use_container_width=True)
+    
+
 
 # calculate basic metric from the stock data
 def calculate_metrics(data):
@@ -60,48 +100,59 @@ time_period = st.sidebar.selectbox("Time Period", ["1wk", "1mo", "1y", "max"])
 chart_type = st.sidebar.selectbox("Chart Type", ["Candlestick", "Line"])
 
 # Main content Area
+
+data = fetch_stock_data(ticker, time_period)
+data = process_data(data)
+last_close, change, pct_change, high, low, volume = calculate_metrics(data)
+
+
+# display the main metrics
+st.metric(label=f"{ticker} last price", value=f"{round(last_close, 2)} USD", delta=f"{round(change,2)} ({round(pct_change)}%)")
+col1, col2, col3 = st.columns(3)
+col1.metric("High", f"{round(high,2)} USD")
+col2.metric("Low", f"{round(low,2)} USD")
+col3.metric("Volume", f"{volume}")
+
+# plot the stock chart
+fig = go.Figure()
+if chart_type == 'Candlestick':
+    fig.add_trace(go.Candlestick(x=data['Datetime'],open=data['Open'],high=data['High'],
+                                    low=data['Low'],close=data['Close']))
+
+else:
+    fig = px.line(data, x='Datetime', y='Close')
+# format graph
+
 if st.sidebar.button("Forecast"):
     training_state = st.text("Training in Progress")
-    data = fetch_stock_data(ticker, time_period)
-    data = process_data(data)
-    forecast_data = prophet_forecast(data, forecast_periods[time_period])
-    last_close, change, pct_change, high, low, volume = calculate_metrics(data)
+    # Prophet
+    forecast_data, data = get_forecast(ticker, time_period, forecast_periods[time_period])
     training_state.text("Training Done")
-
-    # display the main metrics
-    st.metric(label=f"{ticker} last price", value=f"{round(last_close, 2)} USD", delta=f"{round(change,2)} ({round(pct_change)}%)")
-    col1, col2, col3 = st.columns(3)
-    col1.metric("High", f"{round(high,2)} USD")
-    col2.metric("Low", f"{low:.2f} USD")
-    col3.metric("Volume", f"{volume:,}")
-
-    # plot the stock chart
-    fig = go.Figure()
-    if chart_type == 'Candlestick':
-        fig.add_trace(go.Candlestick(x=data['Datetime'],
-                                     open=data['Open'],
-                                     high=data['High'],
-                                     low=data['Low'],
-                                     close=data['Close']))
-
-    else:
-        fig = px.line(data, x='Datetime', y='Close')
-
     # Prophet Graph
-    fig.add_trace(go.Scatter(x=forecast_data['ds'], y=forecast_data['yhat'][:len(data)+5], name='predicted'))
+    fig.add_trace(go.Scatter(x=forecast_data['ds'], y=forecast_data['yhat'][:len(data) + 4], name='predicted')) 
+fig.update_layout(title=f'{ticker} {time_period.upper()} Chart',
+                        xaxis_title="Time",
+                        yaxis_title="Price (USD)",
+                        height = 600)
+st.plotly_chart(fig, use_container_width=True)
 
-
-    # format graph
-    fig.update_layout(title=f'{ticker} {time_period.upper()} Chart',
-                      xaxis_title="Time",
-                      yaxis_title="Price (USD)",
-                      height = 600)
-    st.plotly_chart(fig, use_container_width=True)
 
     # display historiacal data and technical indicator
-    st.subheader("Historical Data")
-    st.dataframe(data[['Datetime', 'Open', 'High', 'Low', 'Close', 'Volume']])
+st.subheader("Historical Data")
+st.dataframe(data[['Datetime', 'Adj Close', 'Open', 'High', 'Low', 'Close', 'Volume']],  use_container_width=True)
 
+st.markdown("<h2 style='text-align: center;'>Visualization</h2>", unsafe_allow_html=True)
+st.subheader("Moving Average")
+if len(data) < 10 :
+    st.caption("Data length is not sufficient enough to create moving average plot")
+else:
+    moving_average_plot(data, ticker)
+
+st.subheader("Daily Return")
+# st.write(data.describe())
+
+
+daily_return_plot(data)
 
 # Sidebar Prices
 # sidebar section for real-tine stock prices of selected symbol
@@ -112,14 +163,9 @@ for symbol in stock_symbols:
     if not real_time_data.empty:
         real_time_data = process_data(real_time_data)
         last_price = real_time_data['Close'].iloc[-1]
-        change = last_price/real_time_data['Open'].iloc[0]
-        pct_change = (change/real_time_data['Open'].iloc[0]) * 100
+        change = last_price - real_time_data['Open'].iloc[0]
+        pct_change = (change / real_time_data['Open'].iloc[0]) * 100
         st.sidebar.metric(f"{symbol}", f"{round(last_price,2)} USD", f"{round(change,2)} ({round(pct_change,2)}%)")
-
-# Sidebar information section
-st.sidebar.subheader('About')
-st.sidebar.info('This dashboard provides stock data of Apple(AAPL), Google(GOOG), Microsoft(MSFT), Amazon(Amazon)')
-
 
 
 
