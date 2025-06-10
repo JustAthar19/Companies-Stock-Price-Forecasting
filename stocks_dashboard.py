@@ -179,13 +179,9 @@ with tab2:
 with tab3:
     model_choice = st.radio("Select Forecasting Model", ['Prophet', 'SARIMA'])
     if st.button("Forecast"):
-        # training_state = st.empty()
-        # progress_bar = st.progress(0)
         training_state = st.text("Training in Progress")
         if model_choice == 'Prophet':
-            # progress_bar.progress(20)
             forecast_data = get_prophet_forecast(time_period)
-            # progress_bar.progress(100)
             # Confidence Interval Plot
             fig.add_trace(go.Scatter(
                 x=forecast_data['ds'],
@@ -206,9 +202,7 @@ with tab3:
                 showlegend=False
             ))
         else: 
-            # progress_bar.progress(20)
             forecast_data = get_sarima_forecast()
-            # progress_bar.progress(100)
         training_state.text("Training Done ✅")
 
         fig.add_trace(go.Scatter(x=forecast_data['ds'], y=forecast_data['yhat'], name='Forecast'))
