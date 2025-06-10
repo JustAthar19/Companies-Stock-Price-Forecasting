@@ -1,18 +1,15 @@
-import matplotlib.pyplot as plt
 import yfinance as yf
 import streamlit as st
 import plotly.express as px
 import pandas as pd
-import numpy as np
 from plotly import graph_objects as go
 from prophet import Prophet
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
-
 # Data Load & Preprocessing
 forecast_periods = {
     '1wk': 7,
-    '1mo': 20,
+    '1mo': 30,
     '1y': 365,
     'max': 365
 }
@@ -29,25 +26,25 @@ def process_data(data):
     return data
 
 
-# Forecasting Prophet & SARIMA
-# @st.cache_data
-def get_prophet_forecast():
+# Forecasting Prophet & SARIMA for the next 30 days
+def get_prophet_forecast(time_period):
     df = data[['Datetime', 'Close']].rename(columns={"Datetime": "ds", "Close": "y"})
     df.dropna(inplace=True)
-    st.write(df)
-    model = Prophet(daily_seasonality=True)
+    if time_period == "1wk":
+        model = Prophet(daily_seasonality=True,weekly_seasonality=False, yearly_seasonality=False)
+    elif time_period == "1mo":
+        model = Prophet(daily_seasonality=True,weekly_seasonality=True, yearly_seasonality=False)
+    else:
+        model = Prophet(daily_seasonality=True,weekly_seasonality=True, yearly_seasonality=True)
     model.fit(df)
     future = model.make_future_dataframe(periods=30)
     forecast = model.predict(future)
-    st.write(forecast)
     return forecast
 
-# @st.cache_data
 def get_sarima_forecast():
     df = data[['Datetime', 'Close']]
     df.set_index('Datetime', inplace=True)
     df.index = pd.to_datetime(df.index)
-    
     model = SARIMAX(df['Close'], order=(1, 1, 2), seasonal_order=(1, 1, 1, 21))
     results = model.fit(disp=False)
     forecast = results.get_forecast(steps=30)
@@ -55,7 +52,7 @@ def get_sarima_forecast():
     forecast_df = pd.DataFrame({'ds': forecast_index, 'yhat': forecast.predicted_mean})
     return forecast_df
 
-
+# Plotting
 def moving_average_plot(data, ticker):
     days = [10, 20, 50]
     for day in days:
@@ -87,9 +84,7 @@ def daily_return_plot(data):
     st.plotly_chart(fig, use_container_width=True)
     
 
-
-
-# calculate basic metric from the stock data
+# Basic Metric Calculation
 def calculate_metrics(data):
     last_close = data['Close'].iloc[-1]
     prev_close = data['Close'].iloc[0]
@@ -100,16 +95,18 @@ def calculate_metrics(data):
     volume = data['Volume'].sum()
     return last_close, change, pct_change, high, low, volume
 
-# set up streamlit page layout
+
 st.set_page_config(layout='wide')
 st.title("Stock Dashboard")
 tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "📈 Technical Indicators", "🔮 Forecast", "📄 Raw Data"])
+
+# Sidebar Configurations
 st.sidebar.header("Configurations")
 ticker = st.sidebar.selectbox("Select Company for Predictions", ['AAPL', 'GOOG', 'MSFT', 'AMZN'])
 time_period = st.sidebar.selectbox("Time Period", ["1wk", "1mo", "1y", "max"])
 chart_type = st.sidebar.selectbox("Chart Type", ["Candlestick", "Line"])
-# Main content Area
 
+# Main content
 data = fetch_stock_data(ticker, time_period)
 data = process_data(data)
 last_close, change, pct_change, high, low, volume = calculate_metrics(data)
@@ -126,7 +123,7 @@ with tab1: # Overview
     insight_text = f"As of {data['Datetime'].iloc[-1]}, {ticker} closed at ${last_close:.2f}, " \
                 f"{'up' if change > 0 else 'down'} {abs(change):.2f} USD ({pct_change:.2f}%) " \
                 f"from the beginning of the selected period."
-    st.caption(insight_text)
+    st.write(insight_text)
 
     # plot the stock chart
     fig = go.Figure()
@@ -182,22 +179,41 @@ with tab2:
 with tab3:
     model_choice = st.radio("Select Forecasting Model", ['Prophet', 'SARIMA'])
     if st.button("Forecast"):
-        training_state = st.empty()
-        progress_bar = st.progress(0)
+        # training_state = st.empty()
+        # progress_bar = st.progress(0)
         training_state = st.text("Training in Progress")
         if model_choice == 'Prophet':
-            progress_bar.progress(20)
-            forecast_data = get_prophet_forecast()
-            progress_bar.progress(100)
+            # progress_bar.progress(20)
+            forecast_data = get_prophet_forecast(time_period)
+            # progress_bar.progress(100)
+            # Confidence Interval Plot
+            fig.add_trace(go.Scatter(
+                x=forecast_data['ds'],
+                y=forecast_data['yhat_upper'],
+                mode='lines',
+                name='Upper Confidence',
+                line=dict(width=0),
+                showlegend=False
+            ))
+            fig.add_trace(go.Scatter(
+                x=forecast_data['ds'],
+                y=forecast_data['yhat_lower'],
+                mode='lines',
+                name='Lower Confidence',
+                fill='tonexty',
+                fillcolor='rgba(0, 100, 80, 0.2)',
+                line=dict(width=0),
+                showlegend=False
+            ))
         else: 
-            progress_bar.progress(20)
+            # progress_bar.progress(20)
             forecast_data = get_sarima_forecast()
-            progress_bar.progress(100)
-
+            # progress_bar.progress(100)
         training_state.text("Training Done ✅")
 
-
         fig.add_trace(go.Scatter(x=forecast_data['ds'], y=forecast_data['yhat'], name='Forecast'))
+
+    
     fig.update_layout(title=f'{ticker} {time_period.upper()} Chart',
                             xaxis_title="Time",
                             yaxis_title="Price (USD)",
@@ -205,7 +221,6 @@ with tab3:
     st.plotly_chart(fig, use_container_width=True)
 
 with tab4:
-    # display historiacal data and technical indicator
     st.subheader("Historical Data")
     st.dataframe(data[['Datetime', 'Adj Close', 'Open', 'High', 'Low', 'Close', 'Volume']],  use_container_width=True)
     st.download_button("Download CSV", data.to_csv(index=False), file_name=f"{ticker}_historical.csv")
@@ -214,8 +229,7 @@ with tab4:
     st.dataframe(data.describe(), use_container_width=True)
     
 
-# Sidebar Prices
-# sidebar section for real-tine stock prices of selected symbol
+# Sidebar 
 st.sidebar.header('Real-Time Stock Prices')
 stock_symbols = ['AAPL', 'GOOG', 'AMZN', 'MSFT']
 for symbol in stock_symbols:
