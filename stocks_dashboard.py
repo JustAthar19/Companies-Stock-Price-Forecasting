@@ -6,16 +6,21 @@ import pandas as pd
 import numpy as np
 from plotly import graph_objects as go
 from prophet import Prophet
+from statsmodels.tsa.statespace.sarimax import SARIMAX
 
 
-# get the data from yahoo finance 
+# Data Load & Preprocessing
+forecast_periods = {
+    '1wk': 7,
+    '1mo': 20,
+    '1y': 365,
+    'max': 365
+}
 @st.cache_resource
 def fetch_stock_data(ticker, period):
     data = yf.download(ticker, period=period, auto_adjust=False)
     return data
 
-
-# process data to make sure it's in the right format
 def process_data(data):
     data = data.droplevel(1, axis=1)
     data.reset_index(inplace=True)
@@ -23,24 +28,32 @@ def process_data(data):
     data.rename(columns={'Date':'Datetime'}, inplace=True)
     return data
 
-forecast_periods = {
-    '1wk': 7,
-    '1mo': 20,
-    '1y': 365,
-    'max': 365
-}
 
-# new forecasting method
-@st.cache_data
-def get_forecast(ticker, period, time_periods):
-    raw_data = fetch_stock_data(ticker, period)
-    data = process_data(raw_data)
+# Forecasting Prophet & SARIMA
+# @st.cache_data
+def get_prophet_forecast():
     df = data[['Datetime', 'Close']].rename(columns={"Datetime": "ds", "Close": "y"})
-    model = Prophet()
+    df.dropna(inplace=True)
+    st.write(df)
+    model = Prophet(daily_seasonality=True)
     model.fit(df)
-    future = model.make_future_dataframe(periods=time_periods)
+    future = model.make_future_dataframe(periods=30)
     forecast = model.predict(future)
-    return forecast, data
+    st.write(forecast)
+    return forecast
+
+# @st.cache_data
+def get_sarima_forecast():
+    df = data[['Datetime', 'Close']]
+    df.set_index('Datetime', inplace=True)
+    df.index = pd.to_datetime(df.index)
+    
+    model = SARIMAX(df['Close'], order=(1, 1, 2), seasonal_order=(1, 1, 1, 21))
+    results = model.fit(disp=False)
+    forecast = results.get_forecast(steps=30)
+    forecast_index = pd.date_range(start=df.index[-1] + pd.Timedelta(days=1), periods=30)
+    forecast_df = pd.DataFrame({'ds': forecast_index, 'yhat': forecast.predicted_mean})
+    return forecast_df
 
 
 def moving_average_plot(data, ticker):
@@ -48,17 +61,13 @@ def moving_average_plot(data, ticker):
     for day in days:
         col = f"MA {day}"
         data[col] = data['Close'].rolling(window=day).mean()
-
     fig = go.Figure()
-
     fig.add_trace(go.Scatter(x=data['Datetime'], y=data['Close'],
                              mode='lines', name='Close'))
-
     for day in days:
         col = f"MA {day}"
         fig.add_trace(go.Scatter(x=data['Datetime'], y=data[col],
                                  mode='lines', name=f'MA {day} days'))
-
     fig.update_layout(
         title=f'{ticker} - Moving Averages',
         xaxis_title='Date',
@@ -68,8 +77,7 @@ def moving_average_plot(data, ticker):
         width=900,
         height=600
     )
-
-    st.plotly_chart(fig)
+    st.plotly_chart(fig,use_container_width=True)
 
 
 def daily_return_plot(data):
@@ -78,6 +86,7 @@ def daily_return_plot(data):
     fig.update_layout(yaxis_title='Daily Return', xaxis_title='Date')
     st.plotly_chart(fig, use_container_width=True)
     
+
 
 
 # calculate basic metric from the stock data
@@ -99,7 +108,6 @@ st.sidebar.header("Configurations")
 ticker = st.sidebar.selectbox("Select Company for Predictions", ['AAPL', 'GOOG', 'MSFT', 'AMZN'])
 time_period = st.sidebar.selectbox("Time Period", ["1wk", "1mo", "1y", "max"])
 chart_type = st.sidebar.selectbox("Chart Type", ["Candlestick", "Line"])
-
 # Main content Area
 
 data = fetch_stock_data(ticker, time_period)
@@ -115,17 +123,42 @@ with tab1: # Overview
     col2.metric("Low", f"{round(low,2)} USD")
     col3.metric("Volume", f"{volume}")
 
+    insight_text = f"As of {data['Datetime'].iloc[-1]}, {ticker} closed at ${last_close:.2f}, " \
+                f"{'up' if change > 0 else 'down'} {abs(change):.2f} USD ({pct_change:.2f}%) " \
+                f"from the beginning of the selected period."
+    st.caption(insight_text)
+
     # plot the stock chart
     fig = go.Figure()
     if chart_type == 'Candlestick':
         fig.add_trace(go.Candlestick(x=data['Datetime'],open=data['Open'],high=data['High'],
                                         low=data['Low'],close=data['Close']))
+        if time_period == 'max':
+
+            fig.add_vrect(x0="1987-01-01", x1="1988-01-01", fillcolor="gray", opacity=0.3, layer="below", line_width=0,
+                      annotation_text="Black Monday", annotation_position="top left")
+
+            fig.add_vrect(x0="2000-01-01", x1="2002-01-01", fillcolor="purple", opacity=0.3, layer="below", line_width=0,
+                            annotation_text="Dot-com & 9/11", annotation_position="top left")
+
+            fig.add_vrect(x0="2008-01-01", x1="2009-01-01", fillcolor="red", opacity=0.3, layer="below", line_width=0,
+                            annotation_text="Financial Crisis", annotation_position="top left")
+
+            fig.add_vrect(x0="2020-01-01", x1="2021-01-01", fillcolor="green", opacity=0.3, layer="below", line_width=0,
+                            annotation_text="COVID 19", annotation_position="top left")
+
+    
 
     else:
         fig = px.line(data, x='Datetime', y='Close')
     fig.update_layout(title=f'{ticker} {time_period.upper()} Chart',
                       xaxis_title="Time", yaxis_title="Price (USD)", height=600)
     st.plotly_chart(fig, use_container_width=True)
+
+    st.subheader("Volume")
+    volume_fig = px.bar(data, x='Datetime', y='Volume', title="Trading Volume")
+    st.plotly_chart(volume_fig, use_container_width=True)
+    
 
 with tab2: 
     st.subheader("Moving Average")
@@ -135,15 +168,36 @@ with tab2:
         moving_average_plot(data, ticker)
     st.subheader("Daily Return")
     daily_return_plot(data)
+    st.subheader(f"Rolling Volatility {time_period}")
+    data['Daily Return'] = data['Adj Close'].pct_change()
+    data['Volatility'] = data['Daily Return'].rolling(window=10).std()
+    fig_vol = px.line(data, x='Datetime', y='Volatility', title=f'{forecast_periods[time_period]}-day Rolling Volatility')
+    st.plotly_chart(fig_vol, use_container_width=True)
+
+    st.subheader("Cumulative Return")
+    data['Cumulative Return'] = (1 + data['Daily Return']).cumprod()
+    fig_cum = px.line(data, x='Datetime', y='Cumulative Return', title='Cumulative Return')
+    st.plotly_chart(fig_cum, use_container_width=True)
 
 with tab3:
+    model_choice = st.radio("Select Forecasting Model", ['Prophet', 'SARIMA'])
     if st.button("Forecast"):
+        training_state = st.empty()
+        progress_bar = st.progress(0)
         training_state = st.text("Training in Progress")
-        # Prophet
-        forecast_data, data = get_forecast(ticker, time_period, forecast_periods[time_period])
-        training_state.text("Training Done")
-        # Prophet Graph
-        fig.add_trace(go.Scatter(x=forecast_data['ds'], y=forecast_data['yhat'][:len(data) + 4], name='predicted')) 
+        if model_choice == 'Prophet':
+            progress_bar.progress(20)
+            forecast_data = get_prophet_forecast()
+            progress_bar.progress(100)
+        else: 
+            progress_bar.progress(20)
+            forecast_data = get_sarima_forecast()
+            progress_bar.progress(100)
+
+        training_state.text("Training Done ✅")
+
+
+        fig.add_trace(go.Scatter(x=forecast_data['ds'], y=forecast_data['yhat'], name='Forecast'))
     fig.update_layout(title=f'{ticker} {time_period.upper()} Chart',
                             xaxis_title="Time",
                             yaxis_title="Price (USD)",
@@ -154,6 +208,11 @@ with tab4:
     # display historiacal data and technical indicator
     st.subheader("Historical Data")
     st.dataframe(data[['Datetime', 'Adj Close', 'Open', 'High', 'Low', 'Close', 'Volume']],  use_container_width=True)
+    st.download_button("Download CSV", data.to_csv(index=False), file_name=f"{ticker}_historical.csv")
+
+    st.subheader("Data Summary")
+    st.dataframe(data.describe(), use_container_width=True)
+    
 
 # Sidebar Prices
 # sidebar section for real-tine stock prices of selected symbol
