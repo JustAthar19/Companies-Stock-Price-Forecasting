@@ -17,3 +17,4 @@ tensorflow==2.19.0
 yfinance==0.2.61
 plotly==5.22.0
 prophet==1.1.6
+reportlab==4.4.1
