@@ -234,10 +234,8 @@ with tab2:
     )
     data['RSI'] = calculate_rsi(data)
 
-    daily_return = data['Adj Close'].pct_change()
-    z_score = zscore(daily_return.dropna())
-    data['Daily Return'] = daily_return
-    data['Z-Score'] = z_score
+    data['Daily Return'] = data['Adj Close'].pct_change()
+    data['Z-Score'] = zscore(data['Daily Return'])  
     anomalies = data[abs(data['Z-Score']) > 3]
 
     fig_tech = go.Figure()
