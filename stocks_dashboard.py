@@ -11,8 +11,6 @@ from scipy.stats import zscore
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 import io
-import warnings
-warnings.simplefilter(action='ignore', category=FutureWarning)
 
 # Data Load & Preprocessing
 forecast_periods = {
