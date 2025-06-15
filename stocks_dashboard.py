@@ -32,7 +32,6 @@ def process_data(data):
     data.rename(columns={'Date':'Datetime'}, inplace=True)
     return data
 
-
 # Forecasting Prophet & SARIMA for the next 30 days
 def get_prophet_forecast():
     df = data[['Datetime', 'Close']].rename(columns={"Datetime": "ds", "Close": "y"})
@@ -234,10 +233,13 @@ with tab2:
         default=["Moving Averages", "RSI"]
     )
     data['RSI'] = calculate_rsi(data)
-    data['Daily Return'] = data['Adj Close'].pct_change()
-    data['Z-Score'] = zscore(data['Daily Return'].dropna())
+
+    daily_return = data['Adj Close'].pct_change()
+    z_score = zscore(daily_return.dropna())
+    data['Daily Return'] = daily_return
+    data['Z-Score'] = z_score
     anomalies = data[abs(data['Z-Score']) > 3]
-    # Main Chart
+
     fig_tech = go.Figure()
     fig_tech.add_trace(go.Scatter(x=data['Datetime'], y=data['Close'], mode='lines', name='Close'))
     
@@ -278,7 +280,6 @@ with tab2:
     )
     st.plotly_chart(fig_tech, use_container_width=True)
     
-    # Summary Metrics
     if summary_metrics:
         st.subheader("Indicator Summary")
         cols = st.columns(len(summary_metrics))
