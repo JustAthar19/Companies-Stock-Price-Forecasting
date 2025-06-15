@@ -17,6 +17,8 @@ forecast_periods = {
     '1wk': 7,
     '1mo': 30,
     '1y': 365,
+    '5y': 365,
+    '10y': 365,
     'max': 365
 }
 
@@ -51,6 +53,7 @@ def get_sarima_forecast():
     df = data[['Datetime', 'Close']]
     df.set_index('Datetime', inplace=True)
     df.index = pd.to_datetime(df.index)
+    # seasonal_period = 
     model = SARIMAX(df['Close'], order=(1, 1, 2), seasonal_order=(1, 1, 1, 21))
     results = model.fit(disp=False)
     forecast = results.get_forecast(steps=forecast_horizon)
@@ -150,7 +153,7 @@ tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "📈 Technical Indicators", 
 # Sidebar Configurations
 st.sidebar.header("Configurations")
 ticker = st.sidebar.selectbox("Select Company for Predictions", ['AAPL', 'GOOG', 'MSFT', 'AMZN'])
-time_period = st.sidebar.selectbox("Time Period", ["1wk", "1mo", "1y", "max"])
+time_period = st.sidebar.selectbox("Time Period", ["1wk", "1mo", "1y", "5y", "10y", "max"])
 chart_type = st.sidebar.selectbox("Chart Type", ["Candlestick", "Line"])
 
 # Main content
@@ -181,15 +184,17 @@ with tab1:
     else:
         fig.add_trace(go.Scatter(x=data['Datetime'], y=data['Close'], mode='lines', name='Close'))
     fig.add_trace(go.Bar(x=data['Datetime'], y=data['Volume'], name='Volume', yaxis='y2', opacity=0.3))
+    if time_period in ['5y', '10y', 'max']:
+        fig.add_vrect(x0="2020-01-01", x1="2021-01-01", fillcolor="green", opacity=0.3, layer="below", line_width=0,
+                      annotation_text="COVID 19", annotation_position="top left")
+    if time_period in ['10y', 'max']:
+        fig.add_vrect(x0="2008-01-01", x1="2009-01-01", fillcolor="red", opacity=0.3, layer="below", line_width=0,
+                      annotation_text="Financial Crisis", annotation_position="top left")
     if time_period == 'max':
         fig.add_vrect(x0="1987-01-01", x1="1988-01-01", fillcolor="gray", opacity=0.3, layer="below", line_width=0,
                       annotation_text="Black Monday", annotation_position="top left")
         fig.add_vrect(x0="2000-01-01", x1="2002-01-01", fillcolor="purple", opacity=0.3, layer="below", line_width=0,
                       annotation_text="Dot-com & 9/11", annotation_position="top left")
-        fig.add_vrect(x0="2008-01-01", x1="2009-01-01", fillcolor="red", opacity=0.3, layer="below", line_width=0,
-                      annotation_text="Financial Crisis", annotation_position="top left")
-        fig.add_vrect(x0="2020-01-01", x1="2021-01-01", fillcolor="green", opacity=0.3, layer="below", line_width=0,
-                      annotation_text="COVID 19", annotation_position="top left")
     fig.update_layout(
         title=f'{ticker} Price and Volume ({time_period.upper()})',
         xaxis_title="Date",
@@ -232,12 +237,12 @@ with tab2:
         ["Moving Averages", "RSI", "Volatility", "Anomalies"],
         default=["Moving Averages", "RSI"]
     )
+    data['RSI'] = calculate_rsi(data)
     daily_return = data['Adj Close'].pct_change()
     z_scores = zscore(daily_return.dropna())
     data['Daily Return'] = daily_return
     data.loc[daily_return.dropna().index, 'Z-Score'] = z_scores  
     anomalies = data[abs(data['Z-Score']) > 3]
-    st.write(anomalies)
 
     fig_tech = go.Figure()
     fig_tech.add_trace(go.Scatter(x=data['Datetime'], y=data['Close'], mode='lines', name='Close'))
