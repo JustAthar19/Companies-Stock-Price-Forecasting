@@ -232,11 +232,12 @@ with tab2:
         ["Moving Averages", "RSI", "Volatility", "Anomalies"],
         default=["Moving Averages", "RSI"]
     )
-    data['RSI'] = calculate_rsi(data)
-
-    data['Daily Return'] = data['Adj Close'].pct_change()
-    data['Z-Score'] = zscore(data['Daily Return'])  
+    daily_return = data['Adj Close'].pct_change()
+    z_scores = zscore(daily_return.dropna())
+    data['Daily Return'] = daily_return
+    data.loc[daily_return.dropna().index, 'Z-Score'] = z_scores  
     anomalies = data[abs(data['Z-Score']) > 3]
+    st.write(anomalies)
 
     fig_tech = go.Figure()
     fig_tech.add_trace(go.Scatter(x=data['Datetime'], y=data['Close'], mode='lines', name='Close'))
